@@ -14,6 +14,7 @@ lazykvm provides an interactive menu and direct commands for VM lifecycle, snaps
 - Storage management with default KVM directory pools
 - Initialization flow that can create pools and configure libvirt daemon behavior
 - Automatic daemon check/start on run when start-only policy is selected
+- One-shot exit command to stop all running VMs and stop libvirt daemon
 
 ## Default KVM Layout
 
@@ -76,6 +77,7 @@ And maps pools:
 - pool-list, vol-list [pool]
 - host
 - init
+- exit
 
 ## Notes
 

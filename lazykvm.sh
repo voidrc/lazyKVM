@@ -168,6 +168,47 @@ cmd_init() {
     manage_libvirt_daemon
 }
 
+cmd_exit_all() {
+    header "Stopping all running VMs"
+    local -a running_vms=()
+    mapfile -t running_vms < <(virsh list --name --state-running | sed '/^$/d')
+
+    if [[ ${#running_vms[@]} -eq 0 ]]; then
+        info "No running VMs found."
+    else
+        local vm
+        for vm in "${running_vms[@]}"; do
+            info "Shutting down $vm..."
+            virsh shutdown "$vm" >/dev/null 2>&1 || true
+        done
+
+        sleep 3
+        mapfile -t running_vms < <(virsh list --name --state-running | sed '/^$/d')
+        for vm in "${running_vms[@]}"; do
+            warn "$vm is still running; forcing stop..."
+            virsh destroy "$vm" >/dev/null 2>&1 || true
+        done
+    fi
+
+    header "Stopping libvirt daemon"
+    command -v systemctl &>/dev/null || {
+        warn "systemctl not found; cannot stop daemon automatically."
+        return 0
+    }
+
+    local svc=""
+    if ! svc="$(detect_libvirt_service)"; then
+        warn "No libvirt daemon unit found (libvirtd/virtqemud)."
+        return 0
+    fi
+
+    if systemctl stop "$svc" 2>/dev/null; then
+        info "Stopped $svc"
+    else
+        warn "Failed to stop $svc (try: sudo systemctl stop $svc)"
+    fi
+}
+
 show_dir_options() {
     local dir="$1" pattern="$2"
     local -n out_ref="$3"
@@ -508,6 +549,7 @@ interactive_menu() {
         echo "  26) Dump XML             27) Edit XML"
         echo "  28) Autostart ON         29) Autostart OFF"
         echo "  30) Host info            31) Init KVM folders"
+        echo "  32) Exit (stop all + daemon)"
         echo "   q) Quit"
         echo
         read -rp "  Choice: " choice
@@ -544,6 +586,7 @@ interactive_menu() {
             29) read -rp "  VM name: " v; cmd_autostart_off "$v" ;;
             30) cmd_host ;;
             31) cmd_init ;;
+            32) cmd_exit_all; echo "Bye."; exit 0 ;;
             q|Q) echo "Bye."; exit 0 ;;
             *) warn "Unknown choice: $choice" ;;
         esac
@@ -593,6 +636,7 @@ ${CYAN}Commands:${RESET}
     vol-list  [pool]        List volumes in pool (default: $POOL_IMAGES_NAME)
     host                    Show host node info
     init                    Create ~/KVM/{iso,images,snaps,exports,nets} + define pools
+    exit                    Stop all running VMs and stop libvirt daemon
 EOF
 }
 
@@ -630,6 +674,7 @@ case "${1:-}" in
     vol-list)       cmd_vol_list "${2:-$POOL_IMAGES_NAME}" ;;
     host)           cmd_host ;;
     init)           cmd_init ;;
+    exit)           cmd_exit_all ;;
     help|-h|--help) usage ;;
     *)              err "Unknown command: $1"; usage; exit 1 ;;
 esac
